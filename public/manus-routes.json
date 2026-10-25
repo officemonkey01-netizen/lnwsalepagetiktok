@@ -1,0 +1,8 @@
+{
+  "routes": [
+    { "path": "/", "title": "lnwsalepagetiktok — จัดการเซลเพจ" },
+    { "path": "/editor/:id", "title": "แก้ไขเซลเพจ — lnwsalepagetiktok" },
+    { "path": "/p/:slug", "title": "Sale Page — lnwsalepagetiktok" },
+    { "path": "/404", "title": "ไม่พบหน้า — lnwsalepagetiktok" }
+  ]
+}
