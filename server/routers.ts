@@ -4,6 +4,7 @@ import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import * as db from "./db";
 import { z } from "zod";
+import { isAuthorizedWorkspaceUser } from "./_core/access";
 
 const pageButtonSchema = z.object({
   id: z.string().min(1).max(80),
@@ -35,7 +36,7 @@ export const appRouter = router({
     // if you need to use socket.io, read and register route in server/_core/index.ts, all api should start with '/api/' so that the gateway can route correctly
   system: systemRouter,
   auth: router({
-    me: publicProcedure.query(opts => opts.ctx.user),
+    me: publicProcedure.query(opts => isAuthorizedWorkspaceUser(opts.ctx.user) ? opts.ctx.user : null),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
@@ -46,7 +47,7 @@ export const appRouter = router({
   }),
   salePages: router({
     list: protectedProcedure.query(async ({ ctx }) => {
-      const rows = await db.getSalePagesForOwner(ctx.user.openId);
+      const rows = await db.getSalePagesForOwner(ctx.user!.openId);
       return rows.map(row => ({ ...row, buttons: JSON.parse(row.buttons) }));
     }),
     bySlug: publicProcedure.input(z.object({ slug: z.string().trim().min(1).max(160) })).query(async ({ input }) => {
@@ -56,11 +57,11 @@ export const appRouter = router({
     }),
     save: protectedProcedure.input(pageInputSchema).mutation(async ({ ctx, input }) => {
       const { id, buttons, ...rest } = input;
-      const row = await db.saveSalePage(ctx.user.openId, { ...rest, id, buttons: JSON.stringify(buttons) });
+      const row = await db.saveSalePage(ctx.user!.openId, { ...rest, id, buttons: JSON.stringify(buttons) });
       if (!row) throw new Error("Unable to save sale page");
       return { ...row, buttons: JSON.parse(row.buttons) };
     }),
-    remove: protectedProcedure.input(z.object({ id: z.number().int().positive() })).mutation(({ ctx, input }) => db.deleteSalePage(ctx.user.openId, input.id)),
+    remove: protectedProcedure.input(z.object({ id: z.number().int().positive() })).mutation(({ ctx, input }) => db.deleteSalePage(ctx.user!.openId, input.id)),
   }),
   orders: router({
     create: publicProcedure.input(z.object({
