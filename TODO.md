@@ -25,11 +25,11 @@
 - [x] รองรับ route `/p/:slug` สำหรับหน้า public ตาม slug
 - [x] ปุ่มแชร์คัดลอก URL และปุ่มสั่งซื้อบน public navigation
 - [x] เพิ่ม route manifest และ metadata สำหรับแบรนด์
-- [ ] ต่อ Manus OAuth ให้ dashboard/editor ต้อง login ก่อนใช้งาน และแสดงสถานะ logged-out อย่างชัดเจน
-- [ ] ย้าย source of truth ของเซลเพจจาก localStorage ไป Managed MySQL/Drizzle/tRPC โดยผูกข้อมูลกับเจ้าของ workspace
-- [ ] ให้หน้า public อ่านเฉพาะเซลเพจที่มีสถานะเผยแพร่แล้ว และให้ผู้ชมเข้าถึงได้โดยไม่ต้อง login
-- [ ] บันทึกคำสั่งซื้อ public ลงฐานข้อมูลถาวรพร้อม order id, ข้อมูลลูกค้า, จำนวน, วิธีชำระเงิน และสถานะเริ่มต้น
-- [ ] ต่อ Vercel frontend กับ Manus API ผ่าน rewrite เพื่อไม่ให้หน้า production เป็น static wrapper ที่ไม่มี backend
+- [x] ต่อ Manus OAuth ให้ dashboard/editor ต้อง login ก่อนใช้งาน และแสดงสถานะ logged-out อย่างชัดเจน
+- [x] ย้าย source of truth ของเซลเพจจาก localStorage ไป Managed MySQL/Drizzle/tRPC โดยผูกข้อมูลกับเจ้าของ workspace
+- [x] ให้หน้า public อ่านเฉพาะเซลเพจที่มีสถานะเผยแพร่แล้ว และให้ผู้ชมเข้าถึงได้โดยไม่ต้อง login
+- [x] บันทึกคำสั่งซื้อ public ลงฐานข้อมูลถาวรพร้อม order id, ข้อมูลลูกค้า, จำนวน, วิธีชำระเงิน และสถานะเริ่มต้น
+- [x] ต่อ Vercel frontend กับ Manus API ผ่าน rewrite เพื่อไม่ให้หน้า production เป็น static wrapper ที่ไม่มี backend
 - [ ] ต่อ upload รูปภาพผ่าน Managed Storage และ custom domain
 - [ ] ต่อ Pixel/analytics จริงและระบบ package/billing
 
