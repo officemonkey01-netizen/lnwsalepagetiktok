@@ -1,0 +1,20 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/platform/config.js",
+      "destination": "https://lnwsalepage-efh98l6s.manus.space/api/platform/config.js"
+    },
+    {
+      "source": "/api/:path*",
+      "destination": "https://lnwsalepage-efh98l6s.manus.space/api/:path*"
+    },
+    {
+      "source": "/editor/:id",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/p/:slug",
+      "destination": "/index.html"
+    }
+  ]
+}

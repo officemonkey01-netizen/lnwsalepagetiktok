@@ -1,6 +1,6 @@
-import { eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users } from "../drizzle/schema";
+import { InsertSalePage, InsertSalePageOrder, InsertUser, SalePage, salePageOrders, salePages, users } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -88,4 +88,48 @@ export async function getUserByOpenId(openId: string) {
   return result.length > 0 ? result[0] : undefined;
 }
 
-// TODO: add feature queries here as your schema grows.
+export async function getSalePagesForOwner(ownerOpenId: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  return db.select().from(salePages).where(eq(salePages.ownerOpenId, ownerOpenId)).orderBy(desc(salePages.updatedAt));
+}
+
+export async function getPublishedSalePageBySlug(slug: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const result = await db.select().from(salePages).where(and(eq(salePages.slug, slug), eq(salePages.status, "published"))).limit(1);
+  return result[0];
+}
+
+export async function saveSalePage(ownerOpenId: string, input: Omit<InsertSalePage, "ownerOpenId"> & { id?: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  const values: InsertSalePage = { ...input, ownerOpenId, id: undefined };
+  delete (values as Partial<InsertSalePage>).id;
+  if (input.id) {
+    const existing = await db.select({ id: salePages.id }).from(salePages).where(and(eq(salePages.id, input.id), eq(salePages.ownerOpenId, ownerOpenId))).limit(1);
+    if (existing[0]) {
+      await db.update(salePages).set(values).where(and(eq(salePages.id, input.id), eq(salePages.ownerOpenId, ownerOpenId)));
+      const updated = await db.select().from(salePages).where(eq(salePages.id, input.id)).limit(1);
+      return updated[0];
+    }
+  }
+  const inserted = await db.insert(salePages).values(values);
+  const id = Number(inserted[0].insertId);
+  const created = await db.select().from(salePages).where(eq(salePages.id, id)).limit(1);
+  return created[0];
+}
+
+export async function deleteSalePage(ownerOpenId: string, id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  await db.delete(salePages).where(and(eq(salePages.id, id), eq(salePages.ownerOpenId, ownerOpenId)));
+  return { success: true } as const;
+}
+
+export async function createSalePageOrder(order: InsertSalePageOrder) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  await db.insert(salePageOrders).values(order);
+  return { orderId: order.orderId } as const;
+}

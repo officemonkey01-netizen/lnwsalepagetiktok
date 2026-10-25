@@ -35,6 +35,8 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useRoute } from "wouter";
+import { trpc } from "@/lib/trpc";
+import { startLogin } from "@/const";
 
 type ThemeName = "coral" | "midnight" | "mint" | "sunset";
 
@@ -64,6 +66,8 @@ type SalePage = {
   updated: string;
   buttons: PageButton[];
 };
+
+type ApiSalePage = Omit<SalePage, "id" | "updated"> & { id: number; updatedAt: string | Date };
 
 const STORAGE_KEY = "lnwsalepagetiktok.pages.v1";
 
@@ -148,6 +152,33 @@ const initialPages: SalePage[] = [
   },
 ];
 
+function apiPageToClient(page: ApiSalePage): SalePage {
+  return {
+    ...page,
+    id: String(page.id),
+    updated: typeof page.updatedAt === "string" ? page.updatedAt : page.updatedAt.toLocaleString("th-TH"),
+  };
+}
+
+function clientPageToApi(page: SalePage) {
+  return {
+    ...(Number.isFinite(Number(page.id)) ? { id: Number(page.id) } : {}),
+    name: page.name,
+    slug: page.slug,
+    note: page.note,
+    description: page.description,
+    status: page.status,
+    theme: page.theme,
+    accent: page.accent,
+    hero: page.hero,
+    cta: page.cta,
+    ctaUrl: page.ctaUrl,
+    buttons: page.buttons,
+    visits: page.visits,
+    clicks: page.clicks,
+  };
+}
+
 function loadPages(): SalePage[] {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
@@ -218,6 +249,10 @@ function MobileTopbar({ title = "เซลเพจของฉัน" }: { titl
   return <div className="mobile-topbar"><BrandMark compact /><b>{title}</b><IconButton label="เมนู"><Menu size={20} /></IconButton></div>;
 }
 
+function LoginGate() {
+  return <div className="auth-gate"><div className="auth-gate-mark"><Flame size={26} /></div><span className="section-kicker">PRIVATE WORKSPACE</span><h1>เข้าสู่ระบบเพื่อจัดการเซลเพจ</h1><p>ข้อมูลหน้า, สถิติ และออเดอร์ของคุณจะถูกแยกตามบัญชีและเก็บไว้ในฐานข้อมูลถาวร</p><button className="primary-button" onClick={startLogin}><UserRound size={17} /> เข้าสู่ระบบด้วย Manus</button><small>หน้า public ที่เผยแพร่แล้วเปิดให้ลูกค้าเข้าชมได้โดยไม่ต้องเข้าสู่ระบบ</small></div>;
+}
+
 function AppHeader({ onCreate }: { onCreate: () => void }) {
   return <header className="app-header"><div><p className="eyebrow">วันจันทร์ที่ 26 ตุลาคม 2026</p><h1>สวัสดี, คุณเจ <span className="wave">✦</span></h1><p className="header-sub">พร้อมเปลี่ยนทุกคลิกให้เป็นยอดขายหรือยัง?</p></div><div className="header-actions"><div className="header-search"><Search size={17} /><input placeholder="ค้นหาเซลเพจ..." /></div><IconButton label="การแจ้งเตือน" className="notification"><Bell size={18} /><i /></IconButton><button className="primary-button" onClick={onCreate}><Plus size={17} /> สร้างเซลเพจใหม่</button></div></header>;
 }
@@ -243,12 +278,14 @@ function PageRow({ page, onEdit, onDelete, onPreview }: { page: SalePage; onEdit
 function Dashboard({ pages, setPages }: { pages: SalePage[]; setPages: React.Dispatch<React.SetStateAction<SalePage[]>> }) {
   const [, setLocation] = useLocation();
   const [toast, setToast] = useState("");
+  const deleteMutation = trpc.salePages.remove.useMutation();
   const totalVisits = pages.reduce((sum, page) => sum + page.visits, 0);
   const totalClicks = pages.reduce((sum, page) => sum + page.clicks, 0);
   const showToast = (message: string) => { setToast(message); window.setTimeout(() => setToast(""), 2400); };
   const createPage = () => setLocation("/editor/new");
-  const deletePage = (page: SalePage) => {
+  const deletePage = async (page: SalePage) => {
     if (window.confirm(`ลบเซลเพจ “${page.name}” ใช่ไหม?`)) {
+      if (Number.isFinite(Number(page.id))) await deleteMutation.mutateAsync({ id: Number(page.id) });
       setPages((current) => current.filter((item) => item.id !== page.id));
       showToast("ลบเซลเพจแล้ว");
     }
@@ -274,52 +311,76 @@ function Editor({ pages, setPages }: { pages: SalePage[]; setPages: React.Dispat
   const [draft, setDraft] = useState<SalePage>(existing || blank);
   const [activeTab, setActiveTab] = useState<"content" | "style">("content");
   const [saved, setSaved] = useState(false);
+  const saveMutation = trpc.salePages.save.useMutation();
   useEffect(() => { if (existing) setDraft(existing); }, [params?.id]);
   useEffect(() => { document.title = `${draft.name || "แก้ไขเซลเพจ"} — lnwsalepagetiktok`; return () => { document.title = "lnwsalepagetiktok — Sale Page Builder"; }; }, [draft.name]);
   const update = <K extends keyof SalePage>(key: K, value: SalePage[K]) => setDraft((current) => ({ ...current, [key]: value }));
   const updateButton = (id: string, key: keyof PageButton, value: string) => setDraft((current) => ({ ...current, buttons: current.buttons.map((button) => button.id === id ? { ...button, [key]: value } : button) }));
-  const commit = (status = draft.status) => {
+  const commit = async (status = draft.status) => {
     const page = { ...draft, status, slug: (draft.slug || draft.name || "my-sale-page").toLowerCase().trim().replace(/[^a-z0-9-]+/g, "-").replace(/^-|-$/g, ""), updated: "เมื่อสักครู่นี้", visits: existing?.visits || 0, clicks: existing?.clicks || 0 };
-    setPages((current) => current.some((item) => item.id === page.id) ? current.map((item) => item.id === page.id ? page : item) : [page, ...current]);
-    setDraft(page); setSaved(true); window.setTimeout(() => setSaved(false), 2200); return page;
+    try {
+      const persisted = apiPageToClient(await saveMutation.mutateAsync(clientPageToApi(page)) as ApiSalePage);
+      setPages((current) => current.some((item) => item.id === page.id) ? current.map((item) => item.id === page.id ? persisted : item) : [persisted, ...current]);
+      setDraft(persisted); setSaved(true); window.setTimeout(() => setSaved(false), 2200); return persisted;
+    } catch {
+      setSaved(false);
+      return page;
+    }
   };
-  const preview = () => { const page = commit(); setLocation(`/p/${page.slug}`); };
+  const preview = async () => { const page = await commit(); setLocation(`/p/${page.slug}`); };
   const addButton = () => update("buttons", [...draft.buttons, { id: `b-${Date.now()}`, title: "", description: "", url: "", event: "", tone: "dark" }]);
   const removeButton = (id: string) => update("buttons", draft.buttons.filter((button) => button.id !== id));
   const moveButton = (id: string, direction: -1 | 1) => { const index = draft.buttons.findIndex((button) => button.id === id); const next = index + direction; if (index < 0 || next < 0 || next >= draft.buttons.length) return; const buttons = [...draft.buttons]; [buttons[index], buttons[next]] = [buttons[next], buttons[index]]; update("buttons", buttons); };
   return <div className="editor-shell"><SideNav active="pages" /><main className="main-canvas editor-canvas"><MobileTopbar title={isNew ? "สร้างเซลเพจใหม่" : "แก้ไขเซลเพจ"} /><div className="editor-topbar"><button className="back-button" onClick={() => setLocation("/")}><ArrowLeft size={16} /> กลับไปเซลเพจของฉัน</button><div className="editor-actions"><span className="save-state">{saved ? <><Check size={14} /> บันทึกแล้ว</> : "การเปลี่ยนแปลงยังไม่บันทึก"}</span><button className="secondary-button" onClick={preview}><Eye size={16} /> พรีวิว</button><button className="primary-button" onClick={() => commit("published")}><Check size={16} /> เผยแพร่หน้า</button></div></div><div className="editor-heading"><div><span className="section-kicker">SALE PAGE BUILDER</span><h1>{isNew ? "เปิดหน้าใหม่ให้พร้อมขาย" : "ปรับหน้าให้คม แล้วกดเผยแพร่"}</h1><p>ทุกการแก้ไขจะสะท้อนในพรีวิวด้านขวาทันที</p></div><span className="editor-step"><b>01</b> เนื้อหา <ChevronRight size={14} /><b>02</b> ดีไซน์ <ChevronRight size={14} /><b>03</b> เผยแพร่</span></div><div className="editor-layout"><section className="editor-form"><div className="editor-tabs"><button className={activeTab === "content" ? "active" : ""} onClick={() => setActiveTab("content")}><LayoutDashboard size={16} /> เนื้อหา</button><button className={activeTab === "style" ? "active" : ""} onClick={() => setActiveTab("style")}><WandSparkles size={16} /> รูปลักษณ์</button></div>{activeTab === "content" ? <><div className="form-card"><div className="form-card-heading"><div><span className="section-kicker">01 · ข้อมูลหลัก</span><h2>บอกให้คนรู้ว่าหน้านี้คืออะไร</h2></div><span className="required-label">* จำเป็น</span></div><Field label="ชื่อหน้า / ชื่อร้าน"><input value={draft.name} onChange={(event) => update("name", event.target.value)} placeholder="เช่น ร้านของฉัน" /></Field><Field label="คำอธิบายสั้น" hint="บอกจุดเด่นในหนึ่งประโยค ให้คนอยากอ่านต่อ"><textarea value={draft.description} onChange={(event) => update("description", event.target.value)} placeholder="เช่น ของดีที่คัดมาให้คุณ ส่งไว ราคาดี" rows={3} /></Field><div className="two-fields"><Field label="ลิงก์หน้า (slug)" hint="ใช้ตัวอักษรอังกฤษ ตัวเลข และขีดกลาง"><div className="input-prefix"><span>lnwsalepagetiktok.com/</span><input value={draft.slug} onChange={(event) => update("slug", event.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))} placeholder="my-shop" /></div></Field><Field label="โน้ตส่วนตัว" hint="ลูกค้าจะไม่เห็นข้อมูลนี้"><input value={draft.note} onChange={(event) => update("note", event.target.value)} placeholder="เช่น แคมเปญ TikTok ชุด A" /></Field></div></div><div className="form-card"><div className="form-card-heading"><div><span className="section-kicker">02 · ปุ่มหลัก</span><h2>พาคนไปสู่การซื้อ</h2></div><Zap size={18} color="#ff6b4a" /></div><div className="two-fields"><Field label="ข้อความบนปุ่ม"><input value={draft.cta} onChange={(event) => update("cta", event.target.value)} placeholder="เช่น สั่งซื้อสินค้าตอนนี้" /></Field><Field label="ลิงก์ปลายทาง"><input value={draft.ctaUrl} onChange={(event) => update("ctaUrl", event.target.value)} placeholder="https://your-store.com" /></Field></div><Field label="Conversion event" hint="เลือก event ที่ต้องการส่งไปยัง Pixel เมื่อมีการคลิก"><select value={draft.buttons[0]?.event || ""} onChange={(event) => draft.buttons[0] && updateButton(draft.buttons[0].id, "event", event.target.value)}>{eventOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field></div><div className="form-card"><div className="form-card-heading"><div><span className="section-kicker">03 · ปุ่มลิงก์</span><h2>รวมทุกช่องทางไว้ในหน้าเดียว</h2></div><button className="small-outline-button" onClick={addButton}><Plus size={15} /> เพิ่มปุ่ม</button></div><div className="button-editor-list">{draft.buttons.map((button, index) => <div className="button-editor" key={button.id}><div className="drag-handle"><GripVertical size={17} /></div><div className="button-editor-fields"><input value={button.title} onChange={(event) => updateButton(button.id, "title", event.target.value)} placeholder="ชื่อปุ่ม เช่น สั่งซื้อสินค้า" /><div className="button-editor-row"><input value={button.url} onChange={(event) => updateButton(button.id, "url", event.target.value)} placeholder="https://..." /><select value={button.event} onChange={(event) => updateButton(button.id, "event", event.target.value)}>{eventOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></div><input value={button.description} onChange={(event) => updateButton(button.id, "description", event.target.value)} placeholder="รายละเอียดสั้น ๆ (ไม่บังคับ)" /></div><div className="button-editor-actions"><IconButton label="เลื่อนขึ้น" onClick={() => moveButton(button.id, -1)}><ArrowUp size={14} /></IconButton><IconButton label="เลื่อนลง" onClick={() => moveButton(button.id, 1)}><ArrowDown size={14} /></IconButton><IconButton label="ลบปุ่ม" onClick={() => removeButton(button.id)} className="danger"><Trash2 size={14} /></IconButton></div><span className="button-index">{String(index + 1).padStart(2, "0")}</span></div>)}</div></div></> : <><div className="form-card"><div className="form-card-heading"><div><span className="section-kicker">01 · ธีม</span><h2>เลือก mood ที่เป็นตัวคุณ</h2></div></div><div className="theme-picker">{(Object.keys(themeMeta) as ThemeName[]).map((theme) => <button key={theme} className={draft.theme === theme ? "theme-choice selected" : "theme-choice"} onClick={() => { update("theme", theme); update("accent", themeMeta[theme].accent); }}><span className="theme-swatch" style={{ background: themeMeta[theme].bg, borderColor: themeMeta[theme].accent }}><i style={{ background: themeMeta[theme].accent }} /></span><b>{themeMeta[theme].label}</b>{draft.theme === theme && <Check size={14} />}</button>)}</div></div><div className="form-card"><div className="form-card-heading"><div><span className="section-kicker">02 · ภาพปก</span><h2>หยุดสายตาด้วยภาพแรก</h2></div></div><Field label="URL รูปแบนเนอร์" hint="แนะนำสัดส่วน 16:7 และภาพที่มีพื้นที่ว่างสำหรับเนื้อหา"><div className="upload-row"><input value={draft.hero} onChange={(event) => update("hero", event.target.value)} /><button className="small-outline-button"><Upload size={15} /></button></div></Field><div className="hero-upload-preview" style={{ backgroundImage: `url(${draft.hero})` }}><span><Upload size={15} /> วางลิงก์รูปภาพของคุณ</span></div></div><div className="form-card"><div className="form-card-heading"><div><span className="section-kicker">03 · สีแบรนด์</span><h2>ให้ทุกคลิกจำคุณได้</h2></div></div><div className="color-row"><label><span>สีหลัก</span><input type="color" value={draft.accent} onChange={(event) => update("accent", event.target.value)} /></label><div className="accent-preview" style={{ background: draft.accent }}><Check size={16} /> ปุ่มตัวอย่างของคุณ</div></div></div></>}</section><aside className="preview-column"><PreviewPanel draft={draft} /><div className="preview-note"><Sparkles size={15} /><span><b>เคล็ดลับ:</b> ใช้คำบนปุ่มที่ชัดและเริ่มด้วย action เช่น “สั่งซื้อ”, “รับโค้ด”, “ดูรีวิว” เพื่อเพิ่ม CTR</span></div></aside></div></main></div>;
 }
 
-function PublicPage({ pages }: { pages: SalePage[] }) {
-  const [, params] = useRoute("/p/:slug");
-  const page = pages.find((item) => item.slug === params?.slug) || pages[0];
+function PublicPage({ page }: { page: SalePage }) {
   const palette = themeMeta[page.theme];
   const [copied, setCopied] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [orderDone, setOrderDone] = useState(false);
+  const [orderId, setOrderId] = useState("");
   const [quantity, setQuantity] = useState(1);
   const [customer, setCustomer] = useState({ name: "", phone: "", address: "", payment: "cod" });
+  const createOrder = trpc.orders.create.useMutation();
   useEffect(() => { document.title = `${page.name} — lnwsalepagetiktok`; return () => { document.title = "lnwsalepagetiktok — Sale Page Builder"; }; }, [page.name]);
   const copyLink = async () => { try { await navigator.clipboard.writeText(window.location.href); } catch {} setCopied(true); window.setTimeout(() => setCopied(false), 1800); };
   const openCheckout = () => { setOrderDone(false); setCheckoutOpen(true); };
-  const submitOrder = (event: React.FormEvent) => {
+  const submitOrder = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!customer.name || !customer.phone || !customer.address) return;
-    const orderId = `LNW-${Date.now().toString().slice(-6)}`;
-    localStorage.setItem(`lnw.order.${orderId}`, JSON.stringify({ orderId, page: page.slug, quantity, customer, createdAt: new Date().toISOString() }));
+    const result = await createOrder.mutateAsync({ pageId: Number.isFinite(Number(page.id)) ? Number(page.id) : null, pageSlug: page.slug, customerName: customer.name, customerPhone: customer.phone, shippingAddress: customer.address, quantity, payment: customer.payment as "cod" | "transfer" });
+    setOrderId(result.orderId);
     setOrderDone(true);
   };
   const handleLink = (event: React.MouseEvent<HTMLAnchorElement>, button: PageButton) => {
     if (button.event === "purchase" || button.event === "initiate_checkout") { event.preventDefault(); openCheckout(); }
   };
-  return <div className="public-wrap" style={{ background: palette.bg, color: palette.text, "--public-accent": page.accent } as React.CSSProperties}><div className="public-nav"><a href="/" className="public-brand-link"><span className="brand-mark"><Flame size={17} /></span><span>lnwsalepagetiktok</span></a><div><button className="public-nav-button" onClick={copyLink}>{copied ? <Check size={15} /> : <Share2 size={15} />} {copied ? "คัดลอกแล้ว" : "แชร์หน้านี้"}</button><button className="public-nav-button outline" onClick={openCheckout}><ShoppingCart size={14} /> สั่งซื้อ</button></div></div><main className="public-main"><div className="public-cover" style={{ backgroundImage: `linear-gradient(180deg, rgba(0,0,0,.04) 0%, rgba(0,0,0,.46) 100%), url(${page.hero})` }}><span className="public-cover-tag"><Flame size={14} /> lnwsalepagetiktok</span><span className="public-cover-status"><span /> {page.status === "published" ? "Live" : "Preview"}</span></div><section className="public-profile"><div className="public-big-avatar" style={{ background: page.accent }}>J</div><h1>{page.name}</h1><p>{page.description}</p><button className="public-big-cta" style={{ background: page.accent }} onClick={openCheckout}>{page.cta || "ไปดูรายละเอียด"}<ShoppingCart size={17} /></button><div className="public-all-links">{page.buttons.map((button) => <a className={`public-big-link ${button.tone}`} href={button.url || "#"} onClick={(event) => handleLink(event, button)} key={button.id}><span className="link-copy"><b>{button.title || "ปุ่มลิงก์ของคุณ"}</b><small>{button.description}</small></span><ChevronRight size={18} /></a>)}</div><div className="public-socials"><span>ติดตามเรา</span><span className="social-dot">t</span><span className="social-dot">f</span><span className="social-dot">◎</span></div></section></main><footer className="public-footer-wide"><span>© 2026 {page.name}</span><span>สร้างด้วย <b>lnwsalepagetiktok</b></span></footer>{checkoutOpen && <div className="checkout-backdrop" role="dialog" aria-modal="true"><div className="checkout-modal">{orderDone ? <div className="order-success"><span className="success-icon"><Check size={28} /></span><h2>รับออเดอร์เรียบร้อยแล้ว</h2><p>ขอบคุณคุณ {customer.name} เราจะติดต่อกลับที่ {customer.phone} เพื่อยืนยันคำสั่งซื้อ</p><b>เลขที่คำสั่งซื้อ LNW-{Date.now().toString().slice(-6)}</b><button className="primary-button" onClick={() => setCheckoutOpen(false)}>ปิดหน้าต่าง</button></div> : <form onSubmit={submitOrder}><div className="checkout-head"><div><span className="section-kicker">QUICK CHECKOUT</span><h2>สั่งซื้อ {page.name}</h2><p>กรอกข้อมูลให้ครบ แล้วทีมงานจะติดต่อกลับเพื่อยืนยันออเดอร์</p></div><button type="button" className="icon-button" onClick={() => setCheckoutOpen(false)}><X size={18} /></button></div><div className="order-summary"><img src={page.hero} alt="" /><div><b>{page.name}</b><small>พร้อมจัดส่งทั่วประเทศ</small></div><div className="quantity"><button type="button" onClick={() => setQuantity(Math.max(1, quantity - 1))}>−</button><b>{quantity}</b><button type="button" onClick={() => setQuantity(quantity + 1)}>＋</button></div></div><div className="checkout-fields"><label>ชื่อผู้รับ<input required value={customer.name} onChange={(event) => setCustomer({ ...customer, name: event.target.value })} placeholder="เช่น คุณสมชาย" /></label><label>เบอร์โทรศัพท์<input required inputMode="tel" value={customer.phone} onChange={(event) => setCustomer({ ...customer, phone: event.target.value })} placeholder="08x-xxx-xxxx" /></label><label>ที่อยู่จัดส่ง<textarea required value={customer.address} onChange={(event) => setCustomer({ ...customer, address: event.target.value })} placeholder="บ้านเลขที่ ถนน แขวง/ตำบล เขต/อำเภอ จังหวัด รหัสไปรษณีย์" rows={3} /></label><label>วิธีชำระเงิน<select value={customer.payment} onChange={(event) => setCustomer({ ...customer, payment: event.target.value })}><option value="cod">เก็บเงินปลายทาง</option><option value="transfer">โอนเงินหลังยืนยันออเดอร์</option></select></label></div><button className="checkout-submit" style={{ background: page.accent }} type="submit">ยืนยันสั่งซื้อ <ShoppingCart size={17} /></button><small className="checkout-note">ข้อมูลของคุณจะใช้เพื่อจัดส่งสินค้าและยืนยันออเดอร์เท่านั้น</small></form>}</div></div>}</div>;
+  return <div className="public-wrap" style={{ background: palette.bg, color: palette.text, "--public-accent": page.accent } as React.CSSProperties}><div className="public-nav"><a href="/" className="public-brand-link"><span className="brand-mark"><Flame size={17} /></span><span>lnwsalepagetiktok</span></a><div><button className="public-nav-button" onClick={copyLink}>{copied ? <Check size={15} /> : <Share2 size={15} />} {copied ? "คัดลอกแล้ว" : "แชร์หน้านี้"}</button><button className="public-nav-button outline" onClick={openCheckout}><ShoppingCart size={14} /> สั่งซื้อ</button></div></div><main className="public-main"><div className="public-cover" style={{ backgroundImage: `linear-gradient(180deg, rgba(0,0,0,.04) 0%, rgba(0,0,0,.46) 100%), url(${page.hero})` }}><span className="public-cover-tag"><Flame size={14} /> lnwsalepagetiktok</span><span className="public-cover-status"><span /> {page.status === "published" ? "Live" : "Preview"}</span></div><section className="public-profile"><div className="public-big-avatar" style={{ background: page.accent }}>J</div><h1>{page.name}</h1><p>{page.description}</p><button className="public-big-cta" style={{ background: page.accent }} onClick={openCheckout}>{page.cta || "ไปดูรายละเอียด"}<ShoppingCart size={17} /></button><div className="public-all-links">{page.buttons.map((button) => <a className={`public-big-link ${button.tone}`} href={button.url || "#"} onClick={(event) => handleLink(event, button)} key={button.id}><span className="link-copy"><b>{button.title || "ปุ่มลิงก์ของคุณ"}</b><small>{button.description}</small></span><ChevronRight size={18} /></a>)}</div><div className="public-socials"><span>ติดตามเรา</span><span className="social-dot">t</span><span className="social-dot">f</span><span className="social-dot">◎</span></div></section></main><footer className="public-footer-wide"><span>© 2026 {page.name}</span><span>สร้างด้วย <b>lnwsalepagetiktok</b></span></footer>{checkoutOpen && <div className="checkout-backdrop" role="dialog" aria-modal="true"><div className="checkout-modal">{orderDone ? <div className="order-success"><span className="success-icon"><Check size={28} /></span><h2>รับออเดอร์เรียบร้อยแล้ว</h2><p>ขอบคุณคุณ {customer.name} เราจะติดต่อกลับที่ {customer.phone} เพื่อยืนยันคำสั่งซื้อ</p><b>เลขที่คำสั่งซื้อ {orderId}</b><button className="primary-button" onClick={() => setCheckoutOpen(false)}>ปิดหน้าต่าง</button></div> : <form onSubmit={submitOrder}><div className="checkout-head"><div><span className="section-kicker">QUICK CHECKOUT</span><h2>สั่งซื้อ {page.name}</h2><p>กรอกข้อมูลให้ครบ แล้วทีมงานจะติดต่อกลับเพื่อยืนยันออเดอร์</p></div><button type="button" className="icon-button" onClick={() => setCheckoutOpen(false)}><X size={18} /></button></div><div className="order-summary"><img src={page.hero} alt="" /><div><b>{page.name}</b><small>พร้อมจัดส่งทั่วประเทศ</small></div><div className="quantity"><button type="button" onClick={() => setQuantity(Math.max(1, quantity - 1))}>−</button><b>{quantity}</b><button type="button" onClick={() => setQuantity(quantity + 1)}>＋</button></div></div><div className="checkout-fields"><label>ชื่อผู้รับ<input required value={customer.name} onChange={(event) => setCustomer({ ...customer, name: event.target.value })} placeholder="เช่น คุณสมชาย" /></label><label>เบอร์โทรศัพท์<input required inputMode="tel" value={customer.phone} onChange={(event) => setCustomer({ ...customer, phone: event.target.value })} placeholder="08x-xxx-xxxx" /></label><label>ที่อยู่จัดส่ง<textarea required value={customer.address} onChange={(event) => setCustomer({ ...customer, address: event.target.value })} placeholder="บ้านเลขที่ ถนน แขวง/ตำบล เขต/อำเภอ จังหวัด รหัสไปรษณีย์" rows={3} /></label><label>วิธีชำระเงิน<select value={customer.payment} onChange={(event) => setCustomer({ ...customer, payment: event.target.value })}><option value="cod">เก็บเงินปลายทาง</option><option value="transfer">โอนเงินหลังยืนยันออเดอร์</option></select></label></div><button className="checkout-submit" style={{ background: page.accent }} type="submit" disabled={createOrder.isPending}>{createOrder.isPending ? "กำลังบันทึกออเดอร์…" : "ยืนยันสั่งซื้อ"} <ShoppingCart size={17} /></button><small className="checkout-note">ข้อมูลของคุณจะถูกบันทึกในระบบเพื่อใช้จัดส่งและยืนยันออเดอร์</small></form>}</div></div>}</div>;
+}
+
+function PublicPageRemote() {
+  const [, params] = useRoute("/p/:slug");
+  const query = trpc.salePages.bySlug.useQuery({ slug: params?.slug || "" });
+  if (query.isLoading) return <div className="auth-loading">กำลังเปิดเซลเพจ…</div>;
+  if (!query.data) return <div className="auth-loading"><h1>ไม่พบเซลเพจนี้</h1><p>หน้าอาจยังไม่เผยแพร่หรือถูกย้ายออกแล้ว</p></div>;
+  return <PublicPage page={apiPageToClient(query.data as ApiSalePage)} />;
 }
 
 export default function Home() {
-  const [pages, setPages] = usePages();
   const [isEditor] = useRoute("/editor/:id");
   const [isPublic] = useRoute("/p/:slug");
-  if (isPublic) return <PublicPage pages={pages} />;
+  const auth = trpc.auth.me.useQuery();
+  const pagesQuery = trpc.salePages.list.useQuery(undefined, { enabled: Boolean(auth.data) && !isPublic });
+  const [pages, setPages] = useState<SalePage[]>([]);
+  useEffect(() => {
+    if (pagesQuery.data) setPages(pagesQuery.data.map(page => apiPageToClient(page as ApiSalePage)));
+  }, [pagesQuery.data]);
+  if (isPublic) return <PublicPageRemote />;
+  if (auth.isLoading) return <div className="auth-loading">กำลังตรวจสอบสิทธิ์…</div>;
+  if (!auth.data) return <LoginGate />;
+  if (pagesQuery.isLoading) return <div className="auth-loading">กำลังโหลดข้อมูลเซลเพจ…</div>;
+  if (pagesQuery.error) return <div className="auth-loading"><h1>โหลดข้อมูลไม่สำเร็จ</h1><p>กรุณารีเฟรชหน้าแล้วลองใหม่อีกครั้ง</p></div>;
   if (isEditor) return <Editor pages={pages} setPages={setPages} />;
   return <Dashboard pages={pages} setPages={setPages} />;
 }

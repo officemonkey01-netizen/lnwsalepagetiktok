@@ -4,11 +4,13 @@
 สร้างแดชบอร์ดภาษาไทยสำหรับเจ้าของร้าน/นักการตลาดเพื่อสร้างและจัดการเซลเพจหลายหน้า โดยยึดโครงสร้างจากไฟล์ต้นแบบที่ผู้ใช้แนบมา แต่ใช้แบรนด์ `lnwsalepagetiktok` ของผู้ใช้เองทั้งหมด
 
 ## แนวทางการทำงาน
-- Frontend: React + TypeScript + Wouter + Tailwind CSS ที่มากับ starter
-- ระยะ MVP: เก็บข้อมูลเซลเพจใน localStorage เพื่อให้สร้าง แก้ไข ลบ เปิดพรีวิว และเผยแพร่ลิงก์ได้ทันทีบน static hosting
-- โครงสร้างข้อมูลรองรับการย้ายไป Managed Database ผ่าน Drizzle/tRPC ในเฟสถัดไป โดยไม่ผูก UI กับ backend โดยตรง
+- Frontend: React + TypeScript + Wouter + tRPC client จาก starter เดิม
+- Production persistence: เก็บเซลเพจใน Managed MySQL ผ่าน Drizzle/tRPC โดยผูกทุกแถวกับ Manus OAuth `openId`; localStorage ไม่ใช่ source of truth อีกต่อไป
+- Authentication: ใช้ Manus OAuth ตาม starter และ protected procedures สำหรับ dashboard/editor; หน้า `/p/:slug` เป็น public ได้เฉพาะรายการที่เผยแพร่แล้ว
+- Orders: รับคำสั่งซื้อผ่าน public tRPC mutation และบันทึกลง `salePageOrders` พร้อมสถานะ `pending_confirmation`; ยังไม่อ้างว่าเป็น payment gateway จนกว่าจะต่อ provider จริง
+- Hosting: Manus server เป็น API/database runtime; Vercel Git-connected frontend ใช้ rewrite `/api/*` ไปยัง Manus published server จึงคง URL แบรนด์ไว้โดยไม่ทำให้ข้อมูลกลายเป็น static-only
 - Routes: `/` แดชบอร์ด, `/editor/:id` ตัวแก้ไข, `/p/:slug` หน้า public, `/404` not found
-- ข้อมูลตัวอย่างเริ่มต้นเป็นหน้าขายสินค้าแนว TikTok พร้อมสถิติจำลองสำหรับใช้ดูภาพรวม UI
+- หน้าใหม่เริ่มว่างสำหรับบัญชีจริง; seed เดิมใช้เฉพาะ fallback/ตัวอย่าง ไม่เขียนทับข้อมูลเจ้าของเมื่อ server มีข้อมูลแล้ว
 
 ## Design
 
@@ -34,7 +36,8 @@
 
 ## โครงสร้างไฟล์หลัก
 - `client/src/App.tsx` — route map และ app shell
-- `client/src/pages/Home.tsx` — dashboard, editor และ public page flows ของ MVP
+- `client/src/pages/Home.tsx` — dashboard, editor, public page, OAuth gate และ checkout flows
 - `client/src/index.css` — design tokens, responsive layout และ component styling
 - `public/manus-routes.json` — route manifest สำหรับ Webdev
-- `drizzle/schema.ts`, `server/routers.ts`, `server/db.ts` — จุดต่อยอด persistence/auth ในเฟส production backend
+- `drizzle/schema.ts`, `server/routers.ts`, `server/db.ts` — schema, queries และ protected/public procedures สำหรับ production backend
+- `vercel.json` — proxy API จาก branded Vercel frontend ไปยัง Manus server ที่มี database
