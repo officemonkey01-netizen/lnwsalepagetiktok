@@ -1,10 +1,10 @@
 // Only these public values may reach the browser. Never serialize process.env.
 export function publicPlatformConfig(env: NodeJS.ProcessEnv = process.env) {
   return {
-    projectId: env.MANUS_PROJECT_ID ?? "",
-    oauthPortalUrl: env.MANUS_OAUTH_PORTAL_URL ?? "",
-    apiUrl: env.MANUS_API_URL ?? "",
-    apiBrowserKey: env.MANUS_API_BROWSER_KEY ?? "",
+    projectId: env.MANUS_PROJECT_ID ?? "EFh98L6sTdrMfaBpYFxTqS",
+    oauthPortalUrl: env.MANUS_OAUTH_PORTAL_URL ?? "https://manus.im",
+    apiUrl: env.MANUS_API_URL ?? "https://forge.manus.ai",
+    apiBrowserKey: env.MANUS_API_BROWSER_KEY ?? "PgqkiLkibjZFmpZrcEtjyz",
   };
 }
 
